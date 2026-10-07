@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Список прокси</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: system-ui, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            width: 100%;
+            margin: 0 auto;
+        }
+        #mainContent {
+            display: block;
+        }
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+        #updateTime {
+            display: block;
+            font-size: 0.8rem;
+            color: #94a3b8;
+            margin-bottom: 1rem;
+        }
+        #newsSection {
+            background: #1e293b;
+            border-radius: 16px;
+            padding: 1rem 1.2rem;
+            margin-bottom: 1.5rem;
+        }
+        #newsSection h2 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 0.8rem;
+            color: #2dd4bf;
+        }
+        .news-item {
+            display: flex;
+            gap: 8px;
+            font-size: 0.85rem;
+            padding: 6px 0;
+            border-bottom: 1px solid #334155;
+        }
+        .news-item:last-child {
+            border-bottom: none;
+        }
+        .news-item .news-date {
+            color: #64748b;
+            white-space: nowrap;
+            font-size: 0.75rem;
+            min-width: 80px;
+        }
+        .news-item .news-text {
+            color: #e2e8f0;
+        }
+        .news-item.warning .news-text {
+            color: #fbbf24;
+        }
+        .news-item.update .news-text {
+            color: #5eead4;
+        }
+        #refreshBtn {
+            background: #2dd4bf;
+            color: #0f172a;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 40px;
+            font-weight: 700;
+            cursor: pointer;
+            margin-bottom: 1rem;
+        }
+        #refreshBtn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .item {
+            background: #1e293b;
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-bottom: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+        .item-info {
+            font-family: monospace;
+            font-size: 0.9rem;
+            word-break: break-all;
+        }
+        .item-info .secret {
+            color: #64748b;
+            font-size: 0.75rem;
+            margin-top: 2px;
+        }
+        .item-info .comment {
+            color: #94a3b8;
+            font-size: 0.75rem;
+            margin-top: 2px;
+        }
+        a.connect {
+            background: #2563eb;
+            color: #fff;
+            text-decoration: none;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        a.connect:hover {
+            background: #3b82f6;
+        }
+        .error {
+            background: #7f1a1a;
+            color: #fecaca;
+            padding: 12px;
+            border-radius: 12px;
+            margin-bottom: 1rem;
+        }
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #94a3b8;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div id="mainContent">
+            <h1>📡 Список прокси</h1>
+            <span id="updateTime">⏳ Загрузка…</span>
+
+            <div id="newsSection">
+                <h2>📰 Новости</h2>
+                <div id="newsList">
+                    <div class="loading">⏳ Загрузка…</div>
+                </div>
+            </div>
+
+            <button id="refreshBtn">🔄 Обновить</button>
+            <div id="list">
+                <div class="loading">⏳ Загрузка…</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const SOURCE_URL = 'https://raw.githubusercontent.com/mreliseyyt/proxy-giver/refs/heads/main/proxies.txt';
+        const NEWS_URL   = 'https://raw.githubusercontent.com/mreliseyyt/proxy-giver/refs/heads/main/news.json';
+
+        const listEl = document.getElementById('list');
+        const refreshBtn = document.getElementById('refreshBtn');
+        const updateTimeEl = document.getElementById('updateTime');
+        const newsListEl = document.getElementById('newsList');
+
+        function parseLine(line) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#')) return null;
+
+            const linkMatch = trimmed.match(/^(?:tg:\/\/|https?:\/\/(?:t|telegram)\.me\/)(webproxy|proxy)\?([^\s#]+)(?:\s*#\s*(.*))?$/i);
+            if (linkMatch) {
+                const kind = linkMatch[1].toLowerCase();
+                const params = new URLSearchParams(linkMatch[2]);
+                const server = params.get('server');
+                if (!server) return null;
+                const port = params.get('port') || '443';
+                const secret = params.get('secret') || null;
+                const comment = linkMatch[3] ? linkMatch[3].trim() : null;
+                return { server, port, secret, comment, isWeb: kind === 'webproxy' };
+            }
+
+            const parts = trimmed.split(/\s+/);
+            if (parts.length < 1) return null;
+            const server = parts[0];
+            let port = '443';
+            let secret = null;
+            let comment = null;
+            let idx = 1;
+
+            if (parts[1] && /^\d+$/.test(parts[1])) {
+                port = parts[1];
+                idx = 2;
+            }
+
+            if (parts[idx] && !parts[idx].startsWith('#')) {
+                secret = parts[idx];
+                idx++;
+            }
+
+            if (parts[idx] && parts[idx].startsWith('#')) {
+                comment = parts.slice(idx).join(' ').replace(/^#\s*/, '');
+            } else if (trimmed.includes('#')) {
+                const hashIdx = trimmed.indexOf('#');
+                comment = trimmed.slice(hashIdx + 1).trim();
+            }
+
+            return { server, port, secret, comment, isWeb: false };
+        }
+
+        function buildLink(p) {
+            const scheme = p.isWeb ? 'webproxy' : 'proxy';
+            let url = `tg://${scheme}?server=${encodeURIComponent(p.server)}`;
+            if (!p.isWeb || (p.port && p.port !== '443')) {
+                url += `&port=${encodeURIComponent(p.port)}`;
+            }
+            if (p.secret) {
+                url += `&secret=${encodeURIComponent(p.secret)}`;
+            }
+            return url;
+        }
+
+        async function loadNews() {
+            try {
+                const resp = await fetch(NEWS_URL, { cache: 'no-cache' });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const data = await resp.json();
+                const news = data.news || [];
+
+                if (news.length === 0) {
+                    newsListEl.innerHTML = '<div class="loading">Нет новостей</div>';
+                    return;
+                }
+
+                let html = '';
+                for (const item of news) {
+                    const typeClass = item.type === 'warning' ? 'warning' : 'update';
+                    const icon = item.type === 'warning' ? '⚠️' : '🚀';
+                    html += `
+                        <div class="news-item ${typeClass}">
+                            <span class="news-date">${item.date || ''}</span>
+                            <span class="news-text">${icon} ${item.text || ''}</span>
+                        </div>
+                    `;
+                }
+                newsListEl.innerHTML = html;
+            } catch (err) {
+                newsListEl.innerHTML = `<div class="error">❌ Ошибка загрузки новостей: ${err.message}</div>`;
+            }
+        }
+
+        async function loadItems() {
+            refreshBtn.disabled = true;
+            listEl.innerHTML = '<div class="loading">⏳ Загрузка…</div>';
+            updateTimeEl.textContent = '⏳ Загрузка…';
+
+            try {
+                const resp = await fetch(SOURCE_URL, { cache: 'no-cache' });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                let text = await resp.text();
+                text = text.replace(/^\uFEFF/, '');
+
+                const updateMatch = text.match(/# Обновлено:\s*(.+)/);
+                if (updateMatch) {
+                    updateTimeEl.textContent = `🕒 Обновлено: ${updateMatch[1].trim()}`;
+                } else {
+                    updateTimeEl.textContent = '🕒 Время обновления не указано';
+                }
+
+                const lines = text.split(/\r?\n/);
+                const items = [];
+
+                for (const line of lines) {
+                    const p = parseLine(line);
+                    if (p) items.push(p);
+                }
+
+                if (items.length === 0) {
+                    listEl.innerHTML = '<div class="error">❌ Ничего не найдено.</div>';
+                    return;
+                }
+
+                let html = '';
+                for (const p of items) {
+                    const link = buildLink(p);
+                    const secretHtml = p.secret
+                        ? `<div class="secret">🔑 ${p.secret.length > 40 ? p.secret.slice(0, 40) + '…' : p.secret}</div>`
+                        : '';
+                    const commentHtml = p.comment ? `<div class="comment">💬 ${p.comment}</div>` : '';
+                    html += `
+                        <div class="item">
+                            <div class="item-info">
+                                🌐 ${p.server}:${p.port}
+                                ${secretHtml}
+                                ${commentHtml}
+                            </div>
+                            <a class="connect" href="${link}" target="_blank" rel="noopener noreferrer">Открыть</a>
+                        </div>
+                    `;
+                }
+                listEl.innerHTML = html;
+            } catch (err) {
+                listEl.innerHTML = `<div class="error">❌ Ошибка: ${err.message}</div>`;
+                updateTimeEl.textContent = '🕒 Не удалось загрузить';
+            } finally {
+                refreshBtn.disabled = false;
+            }
+        }
+
+        refreshBtn.addEventListener('click', loadItems);
+
+        loadNews();
+        loadItems();
+    </script>
+</body>
+</html>
